@@ -43,6 +43,12 @@ import { getName, getVirtualPathForDynamicRequirePath, normalizePathSlashes } fr
 export default function commonjs(options = {}) {
   const extensions = options.extensions || ['.js'];
   const filter = createFilter(options.include, options.exclude);
+  const strictRequireSemanticFilter =
+    options.strictRequireSemantic === true
+      ? () => true
+      : !options.strictRequireSemantic
+      ? () => false
+      : createFilter(options.strictRequireSemantic);
   const {
     ignoreGlobal,
     ignoreDynamicRequires,
@@ -261,8 +267,7 @@ export default function commonjs(options = {}) {
       const extName = extname(id);
       if (
         extName !== '.cjs' &&
-        id !== DYNAMIC_PACKAGES_ID &&
-        !id.startsWith(DYNAMIC_JSON_PREFIX) &&
+        !id.startsWith('\0') &&
         (!filter(id) || !extensions.includes(extName))
       ) {
         return null;
