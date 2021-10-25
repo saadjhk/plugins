@@ -26,7 +26,6 @@ import {
   PROXY_SUFFIX,
   unwrapId
 } from './helpers';
-import { setCommonJSMetaPromise } from './is-cjs';
 import { hasCjsKeywords } from './parse';
 import {
   getDynamicJsonProxy,
@@ -79,7 +78,6 @@ export default function commonjs(options = {}) {
 
   const esModulesWithDefaultExport = new Set();
   const esModulesWithNamedExports = new Set();
-  const commonJsMetaPromises = new Map();
 
   const ignoreRequire =
     typeof options.ignore === 'function'
@@ -250,7 +248,7 @@ export default function commonjs(options = {}) {
           getRequireReturnsDefault(actualId),
           esModulesWithDefaultExport,
           esModulesWithNamedExports,
-          commonJsMetaPromises
+          this.load
         );
       }
 
@@ -267,7 +265,8 @@ export default function commonjs(options = {}) {
       const extName = extname(id);
       if (
         extName !== '.cjs' &&
-        !id.startsWith('\0') &&
+        id !== DYNAMIC_PACKAGES_ID &&
+        !id.startsWith(DYNAMIC_JSON_PREFIX) &&
         (!filter(id) || !extensions.includes(extName))
       ) {
         return null;
@@ -278,14 +277,6 @@ export default function commonjs(options = {}) {
       } catch (err) {
         return this.error(err, err.loc);
       }
-    },
-
-    moduleParsed({ id, meta: { commonjs: commonjsMeta } }) {
-      if (commonjsMeta && commonjsMeta.isCommonJS != null) {
-        setCommonJSMetaPromise(commonJsMetaPromises, id, commonjsMeta);
-        return;
-      }
-      setCommonJSMetaPromise(commonJsMetaPromises, id, null);
     }
   };
 }

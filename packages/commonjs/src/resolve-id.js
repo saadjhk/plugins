@@ -13,7 +13,6 @@ import {
   isWrappedId,
   MODULE_SUFFIX,
   PROXY_SUFFIX,
-  REQUIRE_SUFFIX,
   unwrapId,
   wrapId
 } from './helpers';
@@ -66,14 +65,11 @@ export default function getResolveId(extensions) {
     }
 
     const isProxyModule = isWrappedId(importee, PROXY_SUFFIX);
-    const isRequiredModule = isWrappedId(importee, REQUIRE_SUFFIX);
     let isModuleRegistration = false;
 
     if (isProxyModule) {
       importee = unwrapId(importee, PROXY_SUFFIX);
-    } else if (isRequiredModule) {
-      importee = unwrapId(importee, REQUIRE_SUFFIX);
-
+    } else {
       isModuleRegistration = isWrappedId(importee, DYNAMIC_REGISTER_SUFFIX);
       if (isModuleRegistration) {
         importee = unwrapId(importee, DYNAMIC_REGISTER_SUFFIX);
@@ -98,7 +94,7 @@ export default function getResolveId(extensions) {
       Object.assign({}, resolveOptions, {
         skipSelf: true,
         custom: Object.assign({}, resolveOptions.custom, {
-          'node-resolve': { isRequire: isProxyModule || isRequiredModule }
+          'node-resolve': { isRequire: isProxyModule || isModuleRegistration }
         })
       })
     ).then((resolved) => {
@@ -110,7 +106,7 @@ export default function getResolveId(extensions) {
         resolved.external = false;
       } else if (resolved && isModuleRegistration) {
         resolved.id = wrapId(resolved.id, DYNAMIC_REGISTER_SUFFIX);
-      } else if (!resolved && (isProxyModule || isRequiredModule)) {
+      } else if (!resolved && isProxyModule) {
         return { id: wrapId(importee, EXTERNAL_SUFFIX), external: false };
       }
       return resolved;
