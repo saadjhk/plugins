@@ -101,13 +101,22 @@ export default function getResolveId(extensions) {
       if (!resolved) {
         resolved = resolveExtensions(importee, importer);
       }
-      if (resolved && isProxyModule) {
-        resolved.id = wrapId(resolved.id, resolved.external ? EXTERNAL_SUFFIX : PROXY_SUFFIX);
-        resolved.external = false;
-      } else if (resolved && isModuleRegistration) {
-        resolved.id = wrapId(resolved.id, DYNAMIC_REGISTER_SUFFIX);
-      } else if (!resolved && isProxyModule) {
-        return { id: wrapId(importee, EXTERNAL_SUFFIX), external: false };
+      if (isProxyModule) {
+        if (!resolved || resolved.external) {
+          return {
+            id: wrapId(resolved ? resolved.id : importee, EXTERNAL_SUFFIX),
+            external: false
+          };
+        }
+        // This will make sure meta properties in "resolved" are correctly attached to the module
+        this.load(resolved);
+        return {
+          id: wrapId(resolved.id, PROXY_SUFFIX),
+          external: false
+        };
+      }
+      if (resolved && isModuleRegistration) {
+        return { id: wrapId(resolved.id, DYNAMIC_REGISTER_SUFFIX), external: false };
       }
       return resolved;
     });
