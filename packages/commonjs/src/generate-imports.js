@@ -131,7 +131,7 @@ export function getRequireHandlers() {
         )};`
       );
     }
-    return imports.length ? `${imports.join('\n')}\n\n` : '';
+    return Promise.resolve(imports.length ? `${imports.join('\n')}\n\n` : '');
   }
 
   function setImportNamesAndRewriteRequires(magicString) {

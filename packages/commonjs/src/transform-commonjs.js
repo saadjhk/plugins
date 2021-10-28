@@ -494,7 +494,7 @@ export default function transformCommonjs(
     ? 'exports'
     : 'module';
 
-  const importBlock = rewriteRequireExpressionsAndGetImportBlock(
+  return rewriteRequireExpressionsAndGetImportBlock(
     magicString,
     topLevelDeclarations,
     topLevelRequireDeclarators,
@@ -505,41 +505,41 @@ export default function transformCommonjs(
     exportsName,
     id,
     exportMode
-  );
+  ).then((importBlock) => {
+    const exportBlock = isEsModule
+      ? ''
+      : rewriteExportsAndGetExportsBlock(
+          magicString,
+          moduleName,
+          exportsName,
+          shouldWrap,
+          moduleExportsAssignments,
+          firstTopLevelModuleExportsAssignment,
+          exportsAssignmentsByName,
+          topLevelAssignments,
+          topLevelDefineCompiledEsmExpressions,
+          deconflictedExportNames,
+          code,
+          HELPERS_NAME,
+          exportMode,
+          detectWrappedDefault,
+          defaultIsModuleExports
+        );
 
-  const exportBlock = isEsModule
-    ? ''
-    : rewriteExportsAndGetExportsBlock(
-        magicString,
-        moduleName,
-        exportsName,
-        shouldWrap,
-        moduleExportsAssignments,
-        firstTopLevelModuleExportsAssignment,
-        exportsAssignmentsByName,
-        topLevelAssignments,
-        topLevelDefineCompiledEsmExpressions,
-        deconflictedExportNames,
-        code,
-        HELPERS_NAME,
-        exportMode,
-        detectWrappedDefault,
-        defaultIsModuleExports
-      );
+    if (shouldWrap) {
+      wrapCode(magicString, uses, moduleName, exportsName);
+    }
 
-  if (shouldWrap) {
-    wrapCode(magicString, uses, moduleName, exportsName);
-  }
+    magicString
+      .trim()
+      .prepend(leadingComment + importBlock)
+      .append(exportBlock);
 
-  magicString
-    .trim()
-    .prepend(leadingComment + importBlock)
-    .append(exportBlock);
-
-  return {
-    code: magicString.toString(),
-    map: sourceMap ? magicString.generateMap() : null,
-    syntheticNamedExports: isEsModule ? false : '__moduleExports',
-    meta: { commonjs: { isCommonJS: !isEsModule, usesRequireWrapper } }
-  };
+    return {
+      code: magicString.toString(),
+      map: sourceMap ? magicString.generateMap() : null,
+      syntheticNamedExports: isEsModule ? false : '__moduleExports',
+      meta: { commonjs: { isCommonJS: !isEsModule, usesRequireWrapper } }
+    };
+  });
 }
