@@ -56,7 +56,8 @@ export default function transformCommonjs(
   disableWrap,
   commonDir,
   astCache,
-  defaultIsModuleExports
+  defaultIsModuleExports,
+  usesRequireWrapper
 ) {
   const ast = astCache || tryParse(parse, code, id);
   const magicString = new MagicString(code);
@@ -82,8 +83,7 @@ export default function transformCommonjs(
   const dynamicRegisterSources = new Set();
   let hasRemovedRequire = false;
 
-  const { addRequireStatement, requiredSources, rewriteRequireExpressionsAndGetImportBlock } =
-    getRequireHandlers();
+  const { addRequireStatement, rewriteRequireExpressionsAndGetImportBlock } = getRequireHandlers();
 
   // See which names are assigned to. This is necessary to prevent
   // illegally replacing `var foo = require('foo')` with `import foo from 'foo'`,
@@ -196,12 +196,15 @@ export default function transformCommonjs(
             return;
           }
 
+          // TODO Lukas clean this up for dynamic modules
+          // Transform require.resolve
           if (
             node.callee.object &&
             node.callee.object.name === 'require' &&
             node.callee.property.name === 'resolve' &&
             hasDynamicModuleForPath(id, '/', dynamicRequireModuleSet)
           ) {
+            uses.require = true;
             const requireNode = node.callee.object;
             magicString.appendLeft(
               node.end - 1,
@@ -220,12 +223,16 @@ export default function transformCommonjs(
             return;
           }
 
-          if (!isStaticRequireStatement(node, scope)) return;
-          if (!isDynamicRequireModulesEnabled) {
-            skippedNodes.add(node.callee);
+          // Ignore call expressions of dynamic requires, the callee will be transformed within Identifier
+          if (!isStaticRequireStatement(node, scope)) {
+            return;
           }
+
+          // Otherwise we do not want to replace "require" with the internal helper
+          skippedNodes.add(node.callee);
+          uses.require = true;
+
           if (!isIgnoredRequireStatement(node, ignoreRequire)) {
-            skippedNodes.add(node.callee);
             const usesReturnValue = parent.type !== 'ExpressionStatement';
 
             let canConvertRequire = true;
@@ -241,6 +248,7 @@ export default function transformCommonjs(
             }
 
             let sourceId = getRequireStringArg(node);
+            // TODO Lukas remove dynamic register logic
             const isDynamicRegister = isWrappedId(sourceId, DYNAMIC_REGISTER_SUFFIX);
             if (isDynamicRegister) {
               sourceId = unwrapId(sourceId, DYNAMIC_REGISTER_SUFFIX);
@@ -248,7 +256,10 @@ export default function transformCommonjs(
                 sourceId = DYNAMIC_JSON_PREFIX + sourceId;
               }
               dynamicRegisterSources.add(wrapId(sourceId, DYNAMIC_REGISTER_SUFFIX));
+              magicString.remove(parent.start, parent.end);
             } else {
+              // Handle dynamic requires with known target
+              // TODO Lukas merge into new logic
               if (
                 !sourceId.endsWith('.json') &&
                 hasDynamicModuleForPath(sourceId, id, dynamicRequireModuleSet)
@@ -270,34 +281,36 @@ export default function transformCommonjs(
                 return;
               }
 
-              if (canConvertRequire) {
-                addRequireStatement(sourceId, node, scope, usesReturnValue);
-              }
-            }
-
-            if (usesReturnValue) {
               if (shouldRemoveRequireStatement) {
-                magicString.overwrite(node.start, node.end, `undefined`);
+                if (usesReturnValue) {
+                  magicString.overwrite(node.start, node.end, `undefined`);
+                } else {
+                  magicString.remove(parent.start, parent.end);
+                }
                 return;
               }
 
-              if (
-                parent.type === 'VariableDeclarator' &&
-                !scope.parent &&
-                parent.id.type === 'Identifier'
-              ) {
-                // This will allow us to reuse this variable name as the imported variable if it is not reassigned
-                // and does not conflict with variables in other places where this is imported
-                topLevelRequireDeclarators.add(parent);
-              }
-            } else {
-              // This is a bare import, e.g. `require('foo');`
-
-              if (!canConvertRequire && !shouldRemoveRequireStatement) {
-                return;
+              if (canConvertRequire) {
+                addRequireStatement(
+                  sourceId,
+                  node,
+                  scope,
+                  usesReturnValue,
+                  parent.type === 'ExpressionStatement' ? parent : node
+                );
               }
 
-              magicString.remove(parent.start, parent.end);
+              if (usesReturnValue) {
+                if (
+                  parent.type === 'VariableDeclarator' &&
+                  !scope.parent &&
+                  parent.id.type === 'Identifier'
+                ) {
+                  // This will allow us to reuse this variable name as the imported variable if it is not reassigned
+                  // and does not conflict with variables in other places where this is imported
+                  topLevelRequireDeclarators.add(parent);
+                }
+              }
             }
           }
           return;
@@ -313,9 +326,10 @@ export default function transformCommonjs(
           return;
         case 'Identifier': {
           const { name } = node;
-          if (!(isReference(node, parent) && !scope.contains(name))) return;
+          if (!isReference(node, parent) || scope.contains(name)) return;
           switch (name) {
             case 'require':
+              uses.require = true;
               if (isNodeRequirePropertyAccess(parent)) {
                 if (hasDynamicModuleForPath(id, '/', dynamicRequireModuleSet)) {
                   if (parent.property.name === 'cache') {
@@ -448,7 +462,6 @@ export default function transformCommonjs(
 
   if (
     !(
-      requiredSources.length ||
       dynamicRegisterSources.size ||
       uses.module ||
       uses.exports ||
@@ -527,6 +540,6 @@ export default function transformCommonjs(
     code: magicString.toString(),
     map: sourceMap ? magicString.generateMap() : null,
     syntheticNamedExports: isEsModule ? false : '__moduleExports',
-    meta: { commonjs: { isCommonJS: !isEsModule } }
+    meta: { commonjs: { isCommonJS: !isEsModule, usesRequireWrapper } }
   };
 }

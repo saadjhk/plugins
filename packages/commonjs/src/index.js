@@ -138,6 +138,13 @@ export default function commonjs(options = {}) {
       // eslint-disable-next-line no-param-reassign
       id = unwrapId(id, DYNAMIC_REGISTER_SUFFIX);
     }
+    // TODO Lukas
+    // * test import from ESM -> additional proxy
+    // * test entry point
+    // * test interaction with dynamic require targets
+    // * test circular dependency: We must not use this.load without circularity check -> error in Rollup?
+    // When we write the imports, we already know that we are commonjs or mixed so we can rely on usesRequireWrapper and write that into a table
+    const usesRequireWrapper = !isEsModule && strictRequireSemanticFilter(id);
 
     return transformCommonjs(
       this.parse,
@@ -154,7 +161,8 @@ export default function commonjs(options = {}) {
       disableWrap,
       commonDir,
       ast,
-      defaultIsModuleExports
+      defaultIsModuleExports,
+      usesRequireWrapper
     );
   }
 

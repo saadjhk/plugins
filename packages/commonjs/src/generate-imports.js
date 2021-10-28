@@ -87,32 +87,11 @@ export function hasDynamicModuleForPath(source, id, dynamicRequireModuleSet) {
 }
 
 export function getRequireHandlers() {
-  const requiredSources = [];
   const requiredBySource = Object.create(null);
-  const requiredByNode = new Map();
-  const requireExpressionsWithUsedReturnValue = [];
+  const requireExpressions = [];
 
-  function addRequireStatement(sourceId, node, scope, usesReturnValue) {
-    const required = getRequired(sourceId);
-    requiredByNode.set(node, { scope, required });
-    if (usesReturnValue) {
-      required.nodesUsingRequired.push(node);
-      requireExpressionsWithUsedReturnValue.push(node);
-    }
-  }
-
-  function getRequired(sourceId) {
-    if (!requiredBySource[sourceId]) {
-      requiredSources.push(sourceId);
-
-      requiredBySource[sourceId] = {
-        source: sourceId,
-        name: null,
-        nodesUsingRequired: []
-      };
-    }
-
-    return requiredBySource[sourceId];
+  function addRequireStatement(sourceId, node, scope, usesReturnValue, toBeRemoved) {
+    requireExpressions.push({ sourceId, node, scope, usesReturnValue, toBeRemoved });
   }
 
   function rewriteRequireExpressionsAndGetImportBlock(
@@ -127,11 +106,7 @@ export function getRequireHandlers() {
     id,
     exportMode
   ) {
-    setRemainingImportNamesAndRewriteRequires(
-      requireExpressionsWithUsedReturnValue,
-      requiredByNode,
-      magicString
-    );
+    setImportNamesAndRewriteRequires(magicString);
     const imports = [];
     imports.push(`import * as ${helpersName} from "${HELPERS_ID}";`);
     if (exportMode === 'module') {
@@ -148,7 +123,7 @@ export function getRequireHandlers() {
     for (const source of dynamicRegisterSources) {
       imports.push(`import ${JSON.stringify(source)};`);
     }
-    for (const source of requiredSources) {
+    for (const source of Object.keys(requiredBySource)) {
       const { name, nodesUsingRequired } = requiredBySource[source];
       imports.push(
         `import ${nodesUsingRequired.length ? `${name} from ` : ''}${JSON.stringify(
@@ -159,30 +134,46 @@ export function getRequireHandlers() {
     return imports.length ? `${imports.join('\n')}\n\n` : '';
   }
 
+  function setImportNamesAndRewriteRequires(magicString) {
+    let uid = 0;
+    const nodeToScope = new Map();
+    for (const { sourceId, node, scope, usesReturnValue, toBeRemoved } of requireExpressions) {
+      // TODO Lukas this should only happen for non-function requires
+      const required = getRequired(sourceId);
+      nodeToScope.set(node, scope);
+      if (usesReturnValue) {
+        required.nodesUsingRequired.push(node);
+        if (!required.name) {
+          let potentialName;
+          const isUsedName = (requireExpression) =>
+            nodeToScope.get(requireExpression).contains(potentialName);
+          do {
+            potentialName = `require$$${uid}`;
+            uid += 1;
+          } while (required.nodesUsingRequired.some(isUsedName));
+          required.name = potentialName;
+        }
+        magicString.overwrite(node.start, node.end, required.name);
+      } else {
+        magicString.remove(toBeRemoved.start, toBeRemoved.end);
+      }
+    }
+  }
+
+  function getRequired(sourceId) {
+    if (!requiredBySource[sourceId]) {
+      requiredBySource[sourceId] = {
+        source: sourceId,
+        name: null,
+        nodesUsingRequired: []
+      };
+    }
+
+    return requiredBySource[sourceId];
+  }
+
   return {
     addRequireStatement,
-    requiredSources,
     rewriteRequireExpressionsAndGetImportBlock
   };
-}
-
-function setRemainingImportNamesAndRewriteRequires(
-  requireExpressionsWithUsedReturnValue,
-  requiredByNode,
-  magicString
-) {
-  let uid = 0;
-  for (const requireExpression of requireExpressionsWithUsedReturnValue) {
-    const { required } = requiredByNode.get(requireExpression);
-    if (!required.name) {
-      let potentialName;
-      const isUsedName = (node) => requiredByNode.get(node).scope.contains(potentialName);
-      do {
-        potentialName = `require$$${uid}`;
-        uid += 1;
-      } while (required.nodesUsingRequired.some(isUsedName));
-      required.name = potentialName;
-    }
-    magicString.overwrite(requireExpression.start, requireExpression.end, required.name);
-  }
 }

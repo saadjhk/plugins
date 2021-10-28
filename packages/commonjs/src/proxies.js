@@ -49,6 +49,7 @@ export async function getStaticRequireProxy(
   loadModule
 ) {
   const name = getName(id);
+  // TODO Lukas there is a load inside a load here, problem if circular
   const {
     meta: { commonjs: commonjsMeta }
   } = await loadModule({ id });
