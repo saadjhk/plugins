@@ -28,28 +28,33 @@ function getCandidates(resolved, extensions) {
   );
 }
 
-export default function getResolveId(extensions) {
-  function resolveExtensions(importee, importer) {
-    // not our problem
-    if (importee[0] !== '.' || !importer) return undefined;
+export function resolveExtensions(importee, importer, extensions) {
+  // not our problem
+  if (importee[0] !== '.' || !importer) return undefined;
 
-    const resolved = resolve(dirname(importer), importee);
-    const candidates = getCandidates(resolved, extensions);
+  const resolved = resolve(dirname(importer), importee);
+  const candidates = getCandidates(resolved, extensions);
 
-    for (let i = 0; i < candidates.length; i += 1) {
-      try {
-        const stats = statSync(candidates[i]);
-        if (stats.isFile()) return { id: candidates[i] };
-      } catch (err) {
-        /* noop */
-      }
+  for (let i = 0; i < candidates.length; i += 1) {
+    try {
+      const stats = statSync(candidates[i]);
+      if (stats.isFile()) return { id: candidates[i] };
+    } catch (err) {
+      /* noop */
     }
-
-    return undefined;
   }
 
+  return undefined;
+}
+
+export default function getResolveId(extensions) {
   return function resolveId(importee, rawImporter, resolveOptions) {
-    if (isWrappedId(importee, MODULE_SUFFIX) || isWrappedId(importee, EXPORTS_SUFFIX)) {
+    if (
+      isWrappedId(importee, MODULE_SUFFIX) ||
+      isWrappedId(importee, EXPORTS_SUFFIX) ||
+      isWrappedId(importee, PROXY_SUFFIX) ||
+      isWrappedId(importee, EXTERNAL_SUFFIX)
+    ) {
       return importee;
     }
 
@@ -64,16 +69,10 @@ export default function getResolveId(extensions) {
       return importee;
     }
 
-    const isProxyModule = isWrappedId(importee, PROXY_SUFFIX);
     let isModuleRegistration = false;
-
-    if (isProxyModule) {
-      importee = unwrapId(importee, PROXY_SUFFIX);
-    } else {
-      isModuleRegistration = isWrappedId(importee, DYNAMIC_REGISTER_SUFFIX);
-      if (isModuleRegistration) {
-        importee = unwrapId(importee, DYNAMIC_REGISTER_SUFFIX);
-      }
+    isModuleRegistration = isWrappedId(importee, DYNAMIC_REGISTER_SUFFIX);
+    if (isModuleRegistration) {
+      importee = unwrapId(importee, DYNAMIC_REGISTER_SUFFIX);
     }
 
     if (
@@ -88,32 +87,19 @@ export default function getResolveId(extensions) {
       return null;
     }
 
+    // TODO Lukas get rid of module registration
     return this.resolve(
       importee,
       importer,
       Object.assign({}, resolveOptions, {
         skipSelf: true,
         custom: Object.assign({}, resolveOptions.custom, {
-          'node-resolve': { isRequire: isProxyModule || isModuleRegistration }
+          'node-resolve': { isRequire: isModuleRegistration }
         })
       })
     ).then((resolved) => {
       if (!resolved) {
-        resolved = resolveExtensions(importee, importer);
-      }
-      if (isProxyModule) {
-        if (!resolved || resolved.external) {
-          return {
-            id: wrapId(resolved ? resolved.id : importee, EXTERNAL_SUFFIX),
-            external: false
-          };
-        }
-        // This will make sure meta properties in "resolved" are correctly attached to the module
-        this.load(resolved);
-        return {
-          id: wrapId(resolved.id, PROXY_SUFFIX),
-          external: false
-        };
+        resolved = resolveExtensions(importee, importer, extensions);
       }
       if (resolved && isModuleRegistration) {
         return { id: wrapId(resolved.id, DYNAMIC_REGISTER_SUFFIX), external: false };

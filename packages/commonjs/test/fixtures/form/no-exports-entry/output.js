@@ -1,6 +1,6 @@
 import * as commonjsHelpers from "_commonjsHelpers.js";
 import { __exports as input_1 } from "\u0000fixtures/form/no-exports-entry/input.js?commonjs-exports"
-import require$$0 from "\u0000./dummy?commonjs-proxy";
+import require$$0 from "\u0000/Users/lukastaegert/Github/rollup-plugins/packages/commonjs/test/fixtures/form/no-exports-entry/dummy.js?commonjs-proxy";
 
 var dummy = require$$0;
 

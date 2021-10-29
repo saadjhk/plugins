@@ -57,7 +57,8 @@ export default function transformCommonjs(
   commonDir,
   astCache,
   defaultIsModuleExports,
-  usesRequireWrapper
+  usesRequireWrapper,
+  resolveRequireSourcesAndGetMeta
 ) {
   const ast = astCache || tryParse(parse, code, id);
   const magicString = new MagicString(code);
@@ -504,7 +505,8 @@ export default function transformCommonjs(
     moduleName,
     exportsName,
     id,
-    exportMode
+    exportMode,
+    resolveRequireSourcesAndGetMeta
   ).then((importBlock) => {
     const exportBlock = isEsModule
       ? ''
@@ -539,7 +541,10 @@ export default function transformCommonjs(
       code: magicString.toString(),
       map: sourceMap ? magicString.generateMap() : null,
       syntheticNamedExports: isEsModule ? false : '__moduleExports',
-      meta: { commonjs: { isCommonJS: !isEsModule, usesRequireWrapper } }
+      meta: {
+        // TODO Lukas extract constant
+        commonjs: { isCommonJS: !isEsModule && (usesRequireWrapper ? 'withRequireFunction' : true) }
+      }
     };
   });
 }

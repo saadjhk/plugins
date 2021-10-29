@@ -104,7 +104,8 @@ export function getRequireHandlers() {
     moduleName,
     exportsName,
     id,
-    exportMode
+    exportMode,
+    resolveRequireSourcesAndGetMeta
   ) {
     setImportNamesAndRewriteRequires(magicString);
     const imports = [];
@@ -123,15 +124,16 @@ export function getRequireHandlers() {
     for (const source of dynamicRegisterSources) {
       imports.push(`import ${JSON.stringify(source)};`);
     }
-    for (const source of Object.keys(requiredBySource)) {
-      const { name, nodesUsingRequired } = requiredBySource[source];
-      imports.push(
-        `import ${nodesUsingRequired.length ? `${name} from ` : ''}${JSON.stringify(
-          source.startsWith('\0') ? source : wrapId(source, PROXY_SUFFIX)
-        )};`
-      );
-    }
-    return Promise.resolve(imports.length ? `${imports.join('\n')}\n\n` : '');
+    return resolveRequireSourcesAndGetMeta(Object.keys(requiredBySource))
+      .then((result) => {
+        for (const { source, id } of result) {
+          const { name, nodesUsingRequired } = requiredBySource[source];
+          imports.push(
+            `import ${nodesUsingRequired.length ? `${name} from ` : ''}${JSON.stringify(id)};`
+          );
+        }
+      })
+      .then(() => (imports.length ? `${imports.join('\n')}\n\n` : ''));
   }
 
   function setImportNamesAndRewriteRequires(magicString) {

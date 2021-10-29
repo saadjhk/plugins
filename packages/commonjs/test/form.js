@@ -1,6 +1,7 @@
 /* eslint-disable global-require, import/no-dynamic-require, no-console */
 
 import * as fs from 'fs';
+import * as path from 'path';
 
 import * as acorn from 'acorn';
 import test from 'ava';
@@ -15,7 +16,12 @@ const transformContext = {
       ecmaVersion: 9,
       sourceType: 'module',
       ...options
-    })
+    }),
+  resolve: (source, importer) =>
+    Promise.resolve({
+      id: `${path.resolve(path.dirname(importer), source)}${path.extname(source) ? '' : '.js'}`
+    }),
+  load: ({ id }) => Promise.resolve({ id, meta: {} })
 };
 
 fs.readdirSync('./fixtures/form').forEach((dir) => {

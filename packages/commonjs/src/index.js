@@ -24,7 +24,8 @@ import {
   isWrappedId,
   MODULE_SUFFIX,
   PROXY_SUFFIX,
-  unwrapId
+  unwrapId,
+  wrapId
 } from './helpers';
 import { hasCjsKeywords } from './parse';
 import {
@@ -34,7 +35,7 @@ import {
   getStaticRequireProxy,
   getUnknownRequireProxy
 } from './proxies';
-import getResolveId from './resolve-id';
+import getResolveId, { resolveExtensions } from './resolve-id';
 import validateRollupVersion from './rollup-version';
 import transformCommonjs from './transform-commonjs';
 import { getName, getVirtualPathForDynamicRequirePath, normalizePathSlashes } from './utils';
@@ -67,6 +68,7 @@ export default function commonjs(options = {}) {
       : () => esmExternals;
   const defaultIsModuleExports =
     typeof options.defaultIsModuleExports === 'boolean' ? options.defaultIsModuleExports : 'auto';
+  const knownCjsModuleTypes = Object.create(null);
 
   const { dynamicRequireModuleSet, dynamicRequireModuleDirPaths } = getDynamicRequirePaths(
     options.dynamicRequireTargets
@@ -107,6 +109,7 @@ export default function commonjs(options = {}) {
   const sourceMap = options.sourceMap !== false;
 
   function transformAndCheckExports(code, id) {
+    // TODO Lukas should be handled differently
     if (isDynamicRequireModulesEnabled && this.getModuleInfo(id).isEntry) {
       // eslint-disable-next-line no-param-reassign
       code =
@@ -146,6 +149,7 @@ export default function commonjs(options = {}) {
     // When we write the imports, we already know that we are commonjs or mixed so we can rely on usesRequireWrapper and write that into a table
     const usesRequireWrapper = !isEsModule && strictRequireSemanticFilter(id);
 
+    // TODO Lukas extract helpers
     return transformCommonjs(
       this.parse,
       code,
@@ -162,7 +166,49 @@ export default function commonjs(options = {}) {
       commonDir,
       ast,
       defaultIsModuleExports,
-      usesRequireWrapper
+      usesRequireWrapper,
+      (sources) => {
+        knownCjsModuleTypes[id] = usesRequireWrapper ? 'withRequireFunction' : true;
+        return Promise.all(
+          sources.map((source) => {
+            // Never analyze or proxy internal modules
+            if (source.startsWith('\0')) {
+              return { source, id: source, isCommonJS: false };
+            }
+            return this.resolve(source, id, {
+              skipSelf: true,
+              custom: {
+                'node-resolve': { isRequire: true }
+              }
+            }).then((resolved) => {
+              if (!resolved) {
+                // eslint-disable-next-line no-param-reassign
+                resolved = resolveExtensions(source, id, extensions);
+              }
+              if (!resolved) {
+                return { source, id: wrapId(source, EXTERNAL_SUFFIX), isCommonJS: false };
+              }
+              if (resolved.external) {
+                return { source, id: wrapId(resolved.id, EXTERNAL_SUFFIX), isCommonJS: false };
+              }
+              if (resolved.id in knownCjsModuleTypes) {
+                return {
+                  source,
+                  id: wrapId(resolved.id, PROXY_SUFFIX),
+                  isCommonJS: knownCjsModuleTypes[resolved.id]
+                };
+              }
+              return this.load(resolved).then(({ meta: { commonjs: commonjsMeta } }) => {
+                return {
+                  source,
+                  id: wrapId(resolved.id, PROXY_SUFFIX),
+                  isCommonJS: commonjsMeta && commonjsMeta.isCommonJS
+                };
+              });
+            });
+          })
+        );
+      }
     );
   }
 
