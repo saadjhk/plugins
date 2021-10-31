@@ -2,7 +2,7 @@ import { dirname, resolve } from 'path';
 
 import { sync as nodeResolveSync } from 'resolve';
 
-import { EXPORTS_SUFFIX, HELPERS_ID, MODULE_SUFFIX, PROXY_SUFFIX, wrapId } from './helpers';
+import { EXPORTS_SUFFIX, HELPERS_ID, MODULE_SUFFIX, wrapId } from './helpers';
 import { normalizePathSlashes } from './utils';
 
 export function isRequireStatement(node, scope) {
@@ -87,7 +87,6 @@ export function hasDynamicModuleForPath(source, id, dynamicRequireModuleSet) {
 }
 
 export function getRequireHandlers() {
-  const requiredBySource = Object.create(null);
   const requireExpressions = [];
 
   function addRequireStatement(sourceId, node, scope, usesReturnValue, toBeRemoved) {
@@ -107,7 +106,6 @@ export function getRequireHandlers() {
     exportMode,
     resolveRequireSourcesAndGetMeta
   ) {
-    setImportNamesAndRewriteRequires(magicString);
     const imports = [];
     imports.push(`import * as ${helpersName} from "${HELPERS_ID}";`);
     if (exportMode === 'module') {
@@ -124,58 +122,50 @@ export function getRequireHandlers() {
     for (const source of dynamicRegisterSources) {
       imports.push(`import ${JSON.stringify(source)};`);
     }
-    return resolveRequireSourcesAndGetMeta(Object.keys(requiredBySource))
+    const requiresBySource = collectSources(requireExpressions);
+    return resolveRequireSourcesAndGetMeta(Object.keys(requiresBySource))
       .then((result) => {
-        for (const { source, id } of result) {
-          const { name, nodesUsingRequired } = requiredBySource[source];
+        let uid = 0;
+        for (const { source, id: resolveId } of result) {
+          const requires = requiresBySource[source];
+          let usesRequired = false;
+          let name;
+          const hasNameConflict = ({ scope }) => scope.contains(name);
+          do {
+            name = `require$$${uid}`;
+            uid += 1;
+          } while (requires.some(hasNameConflict));
+
+          for (const { node, usesReturnValue, toBeRemoved } of requires) {
+            if (usesReturnValue) {
+              usesRequired = true;
+              magicString.overwrite(node.start, node.end, name);
+            } else {
+              magicString.remove(toBeRemoved.start, toBeRemoved.end);
+            }
+          }
           imports.push(
-            `import ${nodesUsingRequired.length ? `${name} from ` : ''}${JSON.stringify(id)};`
+            `import ${usesRequired ? `${name} from ` : ''}${JSON.stringify(resolveId)};`
           );
         }
       })
       .then(() => (imports.length ? `${imports.join('\n')}\n\n` : ''));
   }
 
-  function setImportNamesAndRewriteRequires(magicString) {
-    let uid = 0;
-    const nodeToScope = new Map();
-    for (const { sourceId, node, scope, usesReturnValue, toBeRemoved } of requireExpressions) {
-      // TODO Lukas this should only happen for non-function requires
-      const required = getRequired(sourceId);
-      nodeToScope.set(node, scope);
-      if (usesReturnValue) {
-        required.nodesUsingRequired.push(node);
-        if (!required.name) {
-          let potentialName;
-          const isUsedName = (requireExpression) =>
-            nodeToScope.get(requireExpression).contains(potentialName);
-          do {
-            potentialName = `require$$${uid}`;
-            uid += 1;
-          } while (required.nodesUsingRequired.some(isUsedName));
-          required.name = potentialName;
-        }
-        magicString.overwrite(node.start, node.end, required.name);
-      } else {
-        magicString.remove(toBeRemoved.start, toBeRemoved.end);
-      }
-    }
-  }
-
-  function getRequired(sourceId) {
-    if (!requiredBySource[sourceId]) {
-      requiredBySource[sourceId] = {
-        source: sourceId,
-        name: null,
-        nodesUsingRequired: []
-      };
-    }
-
-    return requiredBySource[sourceId];
-  }
-
   return {
     addRequireStatement,
     rewriteRequireExpressionsAndGetImportBlock
   };
+}
+
+function collectSources(requireExpressions) {
+  const requiresBySource = Object.create(null);
+  for (const { sourceId, node, scope, usesReturnValue, toBeRemoved } of requireExpressions) {
+    if (!requiresBySource[sourceId]) {
+      requiresBySource[sourceId] = [];
+    }
+    const requires = requiresBySource[sourceId];
+    requires.push({ node, scope, usesReturnValue, toBeRemoved });
+  }
+  return requiresBySource;
 }

@@ -532,10 +532,16 @@ export default function transformCommonjs(
       wrapCode(magicString, uses, moduleName, exportsName);
     }
 
+    // if (!isEsModule && usesRequireWrapper) {
+    //   magicString.trim().prepend(`(function ${requireName} () {\n`).append(`\n} ());`);
+    // }
+
     magicString
       .trim()
       .prepend(leadingComment + importBlock)
       .append(exportBlock);
+
+    // console.log(magicString.toString());
 
     return {
       code: magicString.toString(),
