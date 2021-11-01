@@ -35,7 +35,7 @@ import {
   wrapId
 } from './helpers';
 import { tryParse } from './parse';
-import { deconflict, getName, getVirtualPathForDynamicRequirePath } from './utils';
+import { capitalize, deconflict, getName, getVirtualPathForDynamicRequirePath } from './utils';
 
 const exportsPattern = /^(?:module\.)?exports(?:\.([a-zA-Z_$][a-zA-Z_$0-9]*))?$/;
 
@@ -447,6 +447,8 @@ export default function transformCommonjs(
   const nameBase = getName(id);
   const exportsName = deconflict([...exportsAccessScopes], globals, nameBase);
   const moduleName = deconflict([...moduleAccessScopes], globals, `${nameBase}Module`);
+  const requireName = deconflict([scope], globals, `require${capitalize(nameBase)}`);
+  const isRequiredName = deconflict([scope], globals, `${nameBase}Required`);
   const deconflictedExportNames = Object.create(null);
   for (const [exportName, { scopes }] of exportsAssignmentsByName) {
     deconflictedExportNames[exportName] = deconflict([...scopes], globals, exportName);
@@ -525,23 +527,35 @@ export default function transformCommonjs(
           HELPERS_NAME,
           exportMode,
           detectWrappedDefault,
-          defaultIsModuleExports
+          defaultIsModuleExports,
+          usesRequireWrapper,
+          requireName
         );
 
     if (shouldWrap) {
       wrapCode(magicString, uses, moduleName, exportsName);
     }
 
-    // if (!isEsModule && usesRequireWrapper) {
-    //   magicString.trim().prepend(`(function ${requireName} () {\n`).append(`\n} ());`);
-    // }
+    if (usesRequireWrapper) {
+      magicString
+        .trim()
+        .indent('\t')
+        .prepend(
+          `var ${isRequiredName} = false;
+
+function ${requireName} () {
+\tif (${isRequiredName}) return ${exportsName};
+\t${isRequiredName} = true;
+`
+        ).append(`
+\treturn ${exportsName};
+}`);
+    }
 
     magicString
       .trim()
       .prepend(leadingComment + importBlock)
       .append(exportBlock);
-
-    // console.log(magicString.toString());
 
     return {
       code: magicString.toString(),

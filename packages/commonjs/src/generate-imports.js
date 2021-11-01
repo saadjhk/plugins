@@ -123,10 +123,11 @@ export function getRequireHandlers() {
       imports.push(`import ${JSON.stringify(source)};`);
     }
     const requiresBySource = collectSources(requireExpressions);
+    // TODO Lukas consider extracting stuff
     return resolveRequireSourcesAndGetMeta(Object.keys(requiresBySource))
       .then((result) => {
         let uid = 0;
-        for (const { source, id: resolveId } of result) {
+        for (const { source, id: resolveId, isCommonJS } of result) {
           const requires = requiresBySource[source];
           let usesRequired = false;
           let name;
@@ -136,17 +137,25 @@ export function getRequireHandlers() {
             uid += 1;
           } while (requires.some(hasNameConflict));
 
-          for (const { node, usesReturnValue, toBeRemoved } of requires) {
-            if (usesReturnValue) {
-              usesRequired = true;
-              magicString.overwrite(node.start, node.end, name);
-            } else {
-              magicString.remove(toBeRemoved.start, toBeRemoved.end);
+          // TODO Lukas extract constant
+          if (isCommonJS === 'withRequireFunction') {
+            for (const { node } of requires) {
+              magicString.overwrite(node.start, node.end, `${name}()`);
             }
+            imports.push(`import { __require as ${name} } from ${JSON.stringify(resolveId)};`);
+          } else {
+            for (const { node, usesReturnValue, toBeRemoved } of requires) {
+              if (usesReturnValue) {
+                usesRequired = true;
+                magicString.overwrite(node.start, node.end, name);
+              } else {
+                magicString.remove(toBeRemoved.start, toBeRemoved.end);
+              }
+            }
+            imports.push(
+              `import ${usesRequired ? `${name} from ` : ''}${JSON.stringify(resolveId)};`
+            );
           }
-          imports.push(
-            `import ${usesRequired ? `${name} from ` : ''}${JSON.stringify(resolveId)};`
-          );
         }
       })
       .then(() => (imports.length ? `${imports.join('\n')}\n\n` : ''));

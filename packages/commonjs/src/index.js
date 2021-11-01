@@ -199,10 +199,15 @@ export default function commonjs(options = {}) {
                 };
               }
               return this.load(resolved).then(({ meta: { commonjs: commonjsMeta } }) => {
+                const isCommonJS = commonjsMeta && commonjsMeta.isCommonJS;
                 return {
                   source,
-                  id: wrapId(resolved.id, PROXY_SUFFIX),
-                  isCommonJS: commonjsMeta && commonjsMeta.isCommonJS
+                  id:
+                    // TODO Lukas extract constant
+                    isCommonJS === 'withRequireFunction'
+                      ? resolved.id
+                      : wrapId(resolved.id, PROXY_SUFFIX),
+                  isCommonJS
                 };
               });
             });
