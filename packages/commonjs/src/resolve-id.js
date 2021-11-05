@@ -4,16 +4,14 @@ import { statSync } from 'fs';
 import { dirname, resolve, sep } from 'path';
 
 import {
-  DYNAMIC_JSON_PREFIX,
-  DYNAMIC_PACKAGES_ID,
-  DYNAMIC_REGISTER_SUFFIX,
+  DYNAMIC_MODULES_ID,
+  ES_IMPORT_SUFFIX,
   EXPORTS_SUFFIX,
   EXTERNAL_SUFFIX,
   HELPERS_ID,
   isWrappedId,
   MODULE_SUFFIX,
   PROXY_SUFFIX,
-  unwrapId,
   wrapId
 } from './helpers';
 
@@ -48,38 +46,29 @@ export function resolveExtensions(importee, importer, extensions) {
 }
 
 export default function getResolveId(extensions) {
-  return function resolveId(importee, rawImporter, resolveOptions) {
+  return async function resolveId(importee, importer, resolveOptions) {
     if (
       isWrappedId(importee, MODULE_SUFFIX) ||
       isWrappedId(importee, EXPORTS_SUFFIX) ||
       isWrappedId(importee, PROXY_SUFFIX) ||
+      isWrappedId(importee, ES_IMPORT_SUFFIX) ||
       isWrappedId(importee, EXTERNAL_SUFFIX)
     ) {
       return importee;
     }
 
-    const importer =
-      rawImporter && isWrappedId(rawImporter, DYNAMIC_REGISTER_SUFFIX)
-        ? unwrapId(rawImporter, DYNAMIC_REGISTER_SUFFIX)
-        : rawImporter;
-
     // Except for exports, proxies are only importing resolved ids,
     // no need to resolve again
-    if (importer && isWrappedId(importer, PROXY_SUFFIX)) {
+    if (
+      importer &&
+      (importer === DYNAMIC_MODULES_ID ||
+        isWrappedId(importer, PROXY_SUFFIX) ||
+        isWrappedId(importer, ES_IMPORT_SUFFIX))
+    ) {
       return importee;
     }
 
-    let isModuleRegistration = false;
-    isModuleRegistration = isWrappedId(importee, DYNAMIC_REGISTER_SUFFIX);
-    if (isModuleRegistration) {
-      importee = unwrapId(importee, DYNAMIC_REGISTER_SUFFIX);
-    }
-
-    if (
-      importee.startsWith(HELPERS_ID) ||
-      importee === DYNAMIC_PACKAGES_ID ||
-      importee.startsWith(DYNAMIC_JSON_PREFIX)
-    ) {
+    if (importee.startsWith(HELPERS_ID) || importee === DYNAMIC_MODULES_ID) {
       return importee;
     }
 
@@ -87,24 +76,30 @@ export default function getResolveId(extensions) {
       return null;
     }
 
-    // TODO Lukas get rid of module registration
-    return this.resolve(
-      importee,
-      importer,
-      Object.assign({}, resolveOptions, {
-        skipSelf: true,
-        custom: Object.assign({}, resolveOptions.custom, {
-          'node-resolve': { isRequire: isModuleRegistration }
-        })
-      })
-    ).then((resolved) => {
-      if (!resolved) {
-        resolved = resolveExtensions(importee, importer, extensions);
+    const resolved =
+      (await this.resolve(importee, importer, Object.assign({ skipSelf: true }, resolveOptions))) ||
+      resolveExtensions(importee, importer, extensions);
+    let isCommonJsImporter = false;
+    if (importer) {
+      const moduleInfo = this.getModuleInfo(importer);
+      if (moduleInfo) {
+        const importerCommonJsMeta = moduleInfo.meta.commonjs;
+        if (
+          importerCommonJsMeta &&
+          (importerCommonJsMeta.isCommonJS || importerCommonJsMeta.isMixedModule)
+        ) {
+          isCommonJsImporter = true;
+        }
       }
-      if (resolved && isModuleRegistration) {
-        return { id: wrapId(resolved.id, DYNAMIC_REGISTER_SUFFIX), external: false };
+    }
+    if (resolved && !isCommonJsImporter) {
+      const {
+        meta: { commonjs: commonjsMeta }
+      } = await this.load(resolved);
+      if (commonjsMeta && commonjsMeta.isCommonJS === 'withRequireFunction') {
+        return wrapId(resolved.id, ES_IMPORT_SUFFIX);
       }
-      return resolved;
-    });
+    }
+    return resolved;
   };
 }

@@ -27,13 +27,6 @@ import {
   isRequireStatement,
   isStaticRequireStatement
 } from './generate-imports';
-import {
-  DYNAMIC_JSON_PREFIX,
-  DYNAMIC_REGISTER_SUFFIX,
-  isWrappedId,
-  unwrapId,
-  wrapId
-} from './helpers';
 import { tryParse } from './parse';
 import { capitalize, deconflict, getName, getVirtualPathForDynamicRequirePath } from './utils';
 
@@ -41,7 +34,7 @@ const exportsPattern = /^(?:module\.)?exports(?:\.([a-zA-Z_$][a-zA-Z_$0-9]*))?$/
 
 const functionType = /^(?:FunctionDeclaration|FunctionExpression|ArrowFunctionExpression)$/;
 
-export default function transformCommonjs(
+export default async function transformCommonjs(
   parse,
   code,
   id,
@@ -53,7 +46,6 @@ export default function transformCommonjs(
   sourceMap,
   isDynamicRequireModulesEnabled,
   dynamicRequireModuleSet,
-  disableWrap,
   commonDir,
   astCache,
   defaultIsModuleExports,
@@ -68,7 +60,6 @@ export default function transformCommonjs(
     global: false,
     require: false
   };
-  let usesDynamicRequire = false;
   const virtualDynamicRequirePath =
     isDynamicRequireModulesEnabled && getVirtualPathForDynamicRequirePath(dirname(id), commonDir);
   let scope = attachScopes(ast, 'scope');
@@ -80,8 +71,8 @@ export default function transformCommonjs(
   const globals = new Set();
 
   // TODO technically wrong since globals isn't populated yet, but ¯\_(ツ)_/¯
-  const HELPERS_NAME = deconflict([scope], globals, 'commonjsHelpers');
-  const dynamicRegisterSources = new Set();
+  const helpersName = deconflict([scope], globals, 'commonjsHelpers');
+  const dynamicRequireName = deconflict([scope], globals, 'commonjsRequire');
   let hasRemovedRequire = false;
 
   const { addRequireStatement, rewriteRequireExpressionsAndGetImportBlock } = getRequireHandlers();
@@ -197,7 +188,6 @@ export default function transformCommonjs(
             return;
           }
 
-          // TODO Lukas clean this up for dynamic modules
           // Transform require.resolve
           if (
             node.callee.object &&
@@ -205,6 +195,7 @@ export default function transformCommonjs(
             node.callee.property.name === 'resolve' &&
             hasDynamicModuleForPath(id, '/', dynamicRequireModuleSet)
           ) {
+            // TODO Lukas reimplement
             uses.require = true;
             const requireNode = node.callee.object;
             magicString.appendLeft(
@@ -213,14 +204,9 @@ export default function transformCommonjs(
                 dirname(id) === '.' ? null /* default behavior */ : virtualDynamicRequirePath
               )}`
             );
-            magicString.overwrite(
-              requireNode.start,
-              requireNode.end,
-              `${HELPERS_NAME}.commonjsRequire`,
-              {
-                storeName: true
-              }
-            );
+            magicString.overwrite(requireNode.start, requireNode.end, dynamicRequireName, {
+              storeName: true
+            });
             return;
           }
 
@@ -233,6 +219,7 @@ export default function transformCommonjs(
           skippedNodes.add(node.callee);
           uses.require = true;
 
+          // TODO Lukas can the remaining logic be moved to generate-imports?
           if (!isIgnoredRequireStatement(node, ignoreRequire)) {
             const usesReturnValue = parent.type !== 'ExpressionStatement';
 
@@ -248,69 +235,35 @@ export default function transformCommonjs(
               }
             }
 
-            let sourceId = getRequireStringArg(node);
-            // TODO Lukas remove dynamic register logic
-            const isDynamicRegister = isWrappedId(sourceId, DYNAMIC_REGISTER_SUFFIX);
-            if (isDynamicRegister) {
-              sourceId = unwrapId(sourceId, DYNAMIC_REGISTER_SUFFIX);
-              if (sourceId.endsWith('.json')) {
-                sourceId = DYNAMIC_JSON_PREFIX + sourceId;
-              }
-              dynamicRegisterSources.add(wrapId(sourceId, DYNAMIC_REGISTER_SUFFIX));
-              magicString.remove(parent.start, parent.end);
-            } else {
-              // Handle dynamic requires with known target
-              // TODO Lukas merge into new logic
-              if (
-                !sourceId.endsWith('.json') &&
-                hasDynamicModuleForPath(sourceId, id, dynamicRequireModuleSet)
-              ) {
-                if (shouldRemoveRequireStatement) {
-                  magicString.overwrite(node.start, node.end, `undefined`);
-                } else if (canConvertRequire) {
-                  magicString.overwrite(
-                    node.start,
-                    node.end,
-                    `${HELPERS_NAME}.commonjsRequire(${JSON.stringify(
-                      getVirtualPathForDynamicRequirePath(sourceId, commonDir)
-                    )}, ${JSON.stringify(
-                      dirname(id) === '.' ? null /* default behavior */ : virtualDynamicRequirePath
-                    )})`
-                  );
-                  usesDynamicRequire = true;
-                }
-                return;
-              }
-
-              if (shouldRemoveRequireStatement) {
-                if (usesReturnValue) {
-                  magicString.overwrite(node.start, node.end, `undefined`);
-                } else {
-                  magicString.remove(parent.start, parent.end);
-                }
-                return;
-              }
-
-              if (canConvertRequire) {
-                addRequireStatement(
-                  sourceId,
-                  node,
-                  scope,
-                  usesReturnValue,
-                  parent.type === 'ExpressionStatement' ? parent : node
-                );
-              }
-
+            const sourceId = getRequireStringArg(node);
+            if (shouldRemoveRequireStatement) {
               if (usesReturnValue) {
-                if (
-                  parent.type === 'VariableDeclarator' &&
-                  !scope.parent &&
-                  parent.id.type === 'Identifier'
-                ) {
-                  // This will allow us to reuse this variable name as the imported variable if it is not reassigned
-                  // and does not conflict with variables in other places where this is imported
-                  topLevelRequireDeclarators.add(parent);
-                }
+                magicString.overwrite(node.start, node.end, `undefined`);
+              } else {
+                magicString.remove(parent.start, parent.end);
+              }
+              return;
+            }
+
+            if (canConvertRequire) {
+              addRequireStatement(
+                sourceId,
+                node,
+                scope,
+                usesReturnValue,
+                parent.type === 'ExpressionStatement' ? parent : node
+              );
+            }
+
+            if (usesReturnValue) {
+              if (
+                parent.type === 'VariableDeclarator' &&
+                !scope.parent &&
+                parent.id.type === 'Identifier'
+              ) {
+                // This will allow us to reuse this variable name as the imported variable if it is not reassigned
+                // and does not conflict with variables in other places where this is imported
+                topLevelRequireDeclarators.add(parent);
               }
             }
           }
@@ -332,9 +285,10 @@ export default function transformCommonjs(
             case 'require':
               uses.require = true;
               if (isNodeRequirePropertyAccess(parent)) {
+                // TODO Lukas reimplement?
                 if (hasDynamicModuleForPath(id, '/', dynamicRequireModuleSet)) {
                   if (parent.property.name === 'cache') {
-                    magicString.overwrite(node.start, node.end, `${HELPERS_NAME}.commonjsRequire`, {
+                    magicString.overwrite(node.start, node.end, dynamicRequireName, {
                       storeName: true
                     });
                   }
@@ -346,22 +300,25 @@ export default function transformCommonjs(
               if (isDynamicRequireModulesEnabled && isRequireStatement(parent, scope)) {
                 magicString.appendLeft(
                   parent.end - 1,
-                  `,${JSON.stringify(
+                  `, ${JSON.stringify(
                     dirname(id) === '.' ? null /* default behavior */ : virtualDynamicRequirePath
                   )}`
                 );
               }
               if (!ignoreDynamicRequires) {
                 if (isShorthandProperty(parent)) {
-                  magicString.appendRight(node.end, `: ${HELPERS_NAME}.commonjsRequire`);
+                  magicString.appendRight(node.end, `: ${dynamicRequireName}`);
                 } else {
-                  magicString.overwrite(node.start, node.end, `${HELPERS_NAME}.commonjsRequire`, {
+                  magicString.overwrite(node.start, node.end, dynamicRequireName, {
                     storeName: true
                   });
                 }
               }
-              usesDynamicRequire = true;
               return;
+            // TODO Lukas instead of wrapping, we rewrite everything
+            // module.exports -> exportsVar, except if it is an assignment, then it is moduleVar.exports
+            // module -> moduleVar
+            // only exceptions: Direct assignments to module or exports. Would work with new logic, though.
             case 'module':
             case 'exports':
               shouldWrap = true;
@@ -370,7 +327,7 @@ export default function transformCommonjs(
             case 'global':
               uses.global = true;
               if (!ignoreGlobal) {
-                magicString.overwrite(node.start, node.end, `${HELPERS_NAME}.commonjsGlobal`, {
+                magicString.overwrite(node.start, node.end, `${helpersName}.commonjsGlobal`, {
                   storeName: true
                 });
               }
@@ -387,7 +344,8 @@ export default function transformCommonjs(
         }
         case 'MemberExpression':
           if (!isDynamicRequireModulesEnabled && isModuleRequire(node, scope)) {
-            magicString.overwrite(node.start, node.end, `${HELPERS_NAME}.commonjsRequire`, {
+            uses.require = true;
+            magicString.overwrite(node.start, node.end, dynamicRequireName, {
               storeName: true
             });
             skippedNodes.add(node.object);
@@ -405,7 +363,7 @@ export default function transformCommonjs(
           if (lexicalDepth === 0) {
             uses.global = true;
             if (!ignoreGlobal) {
-              magicString.overwrite(node.start, node.end, `${HELPERS_NAME}.commonjsGlobal`, {
+              magicString.overwrite(node.start, node.end, `${helpersName}.commonjsGlobal`, {
                 storeName: true
               });
             }
@@ -448,34 +406,30 @@ export default function transformCommonjs(
   const exportsName = deconflict([...exportsAccessScopes], globals, nameBase);
   const moduleName = deconflict([...moduleAccessScopes], globals, `${nameBase}Module`);
   const requireName = deconflict([scope], globals, `require${capitalize(nameBase)}`);
-  const isRequiredName = deconflict([scope], globals, `${nameBase}Required`);
+  const isRequiredName = deconflict([scope], globals, `hasRequired${capitalize(nameBase)}`);
   const deconflictedExportNames = Object.create(null);
   for (const [exportName, { scopes }] of exportsAssignmentsByName) {
     deconflictedExportNames[exportName] = deconflict([...scopes], globals, exportName);
   }
 
   // We cannot wrap ES/mixed modules
-  shouldWrap =
-    !isEsModule &&
-    !disableWrap &&
-    (shouldWrap || (uses.exports && moduleExportsAssignments.length > 0));
+  shouldWrap = !isEsModule && (shouldWrap || (uses.exports && moduleExportsAssignments.length > 0));
   const detectWrappedDefault =
     shouldWrap &&
     (topLevelDefineCompiledEsmExpressions.length > 0 || code.indexOf('__esModule') >= 0);
 
   if (
     !(
-      dynamicRegisterSources.size ||
+      shouldWrap ||
       uses.module ||
       uses.exports ||
       uses.require ||
-      usesDynamicRequire ||
       hasRemovedRequire ||
       topLevelDefineCompiledEsmExpressions.length > 0
     ) &&
     (ignoreGlobal || !uses.global)
   ) {
-    return { meta: { commonjs: { isCommonJS: false } } };
+    return { meta: { commonjs: { isCommonJS: false, isMixedModule: false } } };
   }
 
   let leadingComment = '';
@@ -497,74 +451,81 @@ export default function transformCommonjs(
     ? 'exports'
     : 'module';
 
-  return rewriteRequireExpressionsAndGetImportBlock(
+  const importBlock = await rewriteRequireExpressionsAndGetImportBlock(
     magicString,
     topLevelDeclarations,
     topLevelRequireDeclarators,
     reassignedNames,
-    HELPERS_NAME,
-    dynamicRegisterSources,
+    helpersName,
+    dynamicRequireName,
     moduleName,
     exportsName,
     id,
     exportMode,
-    resolveRequireSourcesAndGetMeta
-  ).then((importBlock) => {
-    const exportBlock = isEsModule
-      ? ''
-      : rewriteExportsAndGetExportsBlock(
-          magicString,
-          moduleName,
-          exportsName,
-          shouldWrap,
-          moduleExportsAssignments,
-          firstTopLevelModuleExportsAssignment,
-          exportsAssignmentsByName,
-          topLevelAssignments,
-          topLevelDefineCompiledEsmExpressions,
-          deconflictedExportNames,
-          code,
-          HELPERS_NAME,
-          exportMode,
-          detectWrappedDefault,
-          defaultIsModuleExports,
-          usesRequireWrapper,
-          requireName
-        );
+    resolveRequireSourcesAndGetMeta,
+    usesRequireWrapper,
+    uses.require
+  );
+  const exportBlock = isEsModule
+    ? ''
+    : rewriteExportsAndGetExportsBlock(
+        magicString,
+        moduleName,
+        exportsName,
+        shouldWrap,
+        moduleExportsAssignments,
+        firstTopLevelModuleExportsAssignment,
+        exportsAssignmentsByName,
+        topLevelAssignments,
+        topLevelDefineCompiledEsmExpressions,
+        deconflictedExportNames,
+        code,
+        helpersName,
+        exportMode,
+        detectWrappedDefault,
+        defaultIsModuleExports,
+        usesRequireWrapper,
+        requireName
+      );
 
-    if (shouldWrap) {
-      wrapCode(magicString, uses, moduleName, exportsName);
-    }
+  if (shouldWrap) {
+    wrapCode(magicString, uses, moduleName, exportsName);
+  }
 
-    if (usesRequireWrapper) {
-      magicString
-        .trim()
-        .indent('\t')
-        .prepend(
-          `var ${isRequiredName} = false;
+  if (usesRequireWrapper) {
+    magicString
+      .trim()
+      .indent('\t')
+      .prepend(
+        `var ${isRequiredName};
 
 function ${requireName} () {
 \tif (${isRequiredName}) return ${exportsName};
-\t${isRequiredName} = true;
+\t${isRequiredName} = 1;
 `
-        ).append(`
+      ).append(`
 \treturn ${exportsName};
 }`);
+    if (exportMode === 'replace') {
+      magicString.prepend(`var ${exportsName};\n`);
     }
+  }
 
-    magicString
-      .trim()
-      .prepend(leadingComment + importBlock)
-      .append(exportBlock);
+  magicString
+    .trim()
+    .prepend(leadingComment + importBlock)
+    .append(exportBlock);
 
-    return {
-      code: magicString.toString(),
-      map: sourceMap ? magicString.generateMap() : null,
-      syntheticNamedExports: isEsModule ? false : '__moduleExports',
-      meta: {
-        // TODO Lukas extract constant
-        commonjs: { isCommonJS: !isEsModule && (usesRequireWrapper ? 'withRequireFunction' : true) }
+  return {
+    code: magicString.toString(),
+    map: sourceMap ? magicString.generateMap() : null,
+    syntheticNamedExports: isEsModule || usesRequireWrapper ? false : '__moduleExports',
+    meta: {
+      // TODO Lukas extract constant
+      commonjs: {
+        isCommonJS: !isEsModule && (usesRequireWrapper ? 'withRequireFunction' : true),
+        isMixedModule: isEsModule
       }
-    };
-  });
+    }
+  };
 }

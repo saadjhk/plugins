@@ -2,7 +2,7 @@ import { dirname, resolve } from 'path';
 
 import { sync as nodeResolveSync } from 'resolve';
 
-import { EXPORTS_SUFFIX, HELPERS_ID, MODULE_SUFFIX, wrapId } from './helpers';
+import { DYNAMIC_MODULES_ID, EXPORTS_SUFFIX, HELPERS_ID, MODULE_SUFFIX, wrapId } from './helpers';
 import { normalizePathSlashes } from './utils';
 
 export function isRequireStatement(node, scope) {
@@ -93,21 +93,28 @@ export function getRequireHandlers() {
     requireExpressions.push({ sourceId, node, scope, usesReturnValue, toBeRemoved });
   }
 
-  function rewriteRequireExpressionsAndGetImportBlock(
+  async function rewriteRequireExpressionsAndGetImportBlock(
     magicString,
     topLevelDeclarations,
     topLevelRequireDeclarators,
     reassignedNames,
     helpersName,
-    dynamicRegisterSources,
+    dynamicRequireName,
     moduleName,
     exportsName,
     id,
     exportMode,
-    resolveRequireSourcesAndGetMeta
+    resolveRequireSourcesAndGetMeta,
+    usesRequireWrapper,
+    usesRequire
   ) {
     const imports = [];
     imports.push(`import * as ${helpersName} from "${HELPERS_ID}";`);
+    if (usesRequire) {
+      imports.push(
+        `import { commonjsRequire as ${dynamicRequireName} } from "${DYNAMIC_MODULES_ID}";`
+      );
+    }
     if (exportMode === 'module') {
       imports.push(
         `import { __module as ${moduleName}, exports as ${exportsName} } from ${JSON.stringify(
@@ -119,46 +126,42 @@ export function getRequireHandlers() {
         `import { __exports as ${exportsName} } from ${JSON.stringify(wrapId(id, EXPORTS_SUFFIX))}`
       );
     }
-    for (const source of dynamicRegisterSources) {
-      imports.push(`import ${JSON.stringify(source)};`);
-    }
     const requiresBySource = collectSources(requireExpressions);
     // TODO Lukas consider extracting stuff
-    return resolveRequireSourcesAndGetMeta(Object.keys(requiresBySource))
-      .then((result) => {
-        let uid = 0;
-        for (const { source, id: resolveId, isCommonJS } of result) {
-          const requires = requiresBySource[source];
-          let usesRequired = false;
-          let name;
-          const hasNameConflict = ({ scope }) => scope.contains(name);
-          do {
-            name = `require$$${uid}`;
-            uid += 1;
-          } while (requires.some(hasNameConflict));
+    const result = await resolveRequireSourcesAndGetMeta(
+      usesRequireWrapper ? 'withRequireFunction' : true,
+      Object.keys(requiresBySource)
+    );
+    let uid = 0;
+    for (const { source, id: resolveId, isCommonJS } of result) {
+      const requires = requiresBySource[source];
+      let usesRequired = false;
+      let name;
+      const hasNameConflict = ({ scope }) => scope.contains(name);
+      do {
+        name = `require$$${uid}`;
+        uid += 1;
+      } while (requires.some(hasNameConflict));
 
-          // TODO Lukas extract constant
-          if (isCommonJS === 'withRequireFunction') {
-            for (const { node } of requires) {
-              magicString.overwrite(node.start, node.end, `${name}()`);
-            }
-            imports.push(`import { __require as ${name} } from ${JSON.stringify(resolveId)};`);
+      // TODO Lukas extract constant
+      if (isCommonJS === 'withRequireFunction') {
+        for (const { node } of requires) {
+          magicString.overwrite(node.start, node.end, `${name}()`);
+        }
+        imports.push(`import { __require as ${name} } from ${JSON.stringify(resolveId)};`);
+      } else {
+        for (const { node, usesReturnValue, toBeRemoved } of requires) {
+          if (usesReturnValue) {
+            usesRequired = true;
+            magicString.overwrite(node.start, node.end, name);
           } else {
-            for (const { node, usesReturnValue, toBeRemoved } of requires) {
-              if (usesReturnValue) {
-                usesRequired = true;
-                magicString.overwrite(node.start, node.end, name);
-              } else {
-                magicString.remove(toBeRemoved.start, toBeRemoved.end);
-              }
-            }
-            imports.push(
-              `import ${usesRequired ? `${name} from ` : ''}${JSON.stringify(resolveId)};`
-            );
+            magicString.remove(toBeRemoved.start, toBeRemoved.end);
           }
         }
-      })
-      .then(() => (imports.length ? `${imports.join('\n')}\n\n` : ''));
+        imports.push(`import ${usesRequired ? `${name} from ` : ''}${JSON.stringify(resolveId)};`);
+      }
+    }
+    return imports.length ? `${imports.join('\n')}\n\n` : '';
   }
 
   return {
