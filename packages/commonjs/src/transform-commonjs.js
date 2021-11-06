@@ -27,6 +27,7 @@ import {
   isRequireStatement,
   isStaticRequireStatement
 } from './generate-imports';
+import { IS_WRAPPED_COMMONJS } from './helpers.js';
 import { tryParse } from './parse';
 import { capitalize, deconflict, getName, getVirtualPathForDynamicRequirePath } from './utils';
 
@@ -521,9 +522,8 @@ function ${requireName} () {
     map: sourceMap ? magicString.generateMap() : null,
     syntheticNamedExports: isEsModule || usesRequireWrapper ? false : '__moduleExports',
     meta: {
-      // TODO Lukas extract constant
       commonjs: {
-        isCommonJS: !isEsModule && (usesRequireWrapper ? 'withRequireFunction' : true),
+        isCommonJS: !isEsModule && (usesRequireWrapper ? IS_WRAPPED_COMMONJS : true),
         isMixedModule: isEsModule
       }
     }

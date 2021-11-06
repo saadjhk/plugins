@@ -2,7 +2,14 @@ import { dirname, resolve } from 'path';
 
 import { sync as nodeResolveSync } from 'resolve';
 
-import { DYNAMIC_MODULES_ID, EXPORTS_SUFFIX, HELPERS_ID, MODULE_SUFFIX, wrapId } from './helpers';
+import {
+  DYNAMIC_MODULES_ID,
+  EXPORTS_SUFFIX,
+  HELPERS_ID,
+  IS_WRAPPED_COMMONJS,
+  MODULE_SUFFIX,
+  wrapId
+} from './helpers';
 import { normalizePathSlashes } from './utils';
 
 export function isRequireStatement(node, scope) {
@@ -129,7 +136,7 @@ export function getRequireHandlers() {
     const requiresBySource = collectSources(requireExpressions);
     // TODO Lukas consider extracting stuff
     const result = await resolveRequireSourcesAndGetMeta(
-      usesRequireWrapper ? 'withRequireFunction' : true,
+      usesRequireWrapper ? IS_WRAPPED_COMMONJS : true,
       Object.keys(requiresBySource)
     );
     let uid = 0;
@@ -142,9 +149,7 @@ export function getRequireHandlers() {
         name = `require$$${uid}`;
         uid += 1;
       } while (requires.some(hasNameConflict));
-
-      // TODO Lukas extract constant
-      if (isCommonJS === 'withRequireFunction') {
+      if (isCommonJS === IS_WRAPPED_COMMONJS) {
         for (const { node } of requires) {
           magicString.overwrite(node.start, node.end, `${name}()`);
         }

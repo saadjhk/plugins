@@ -16,6 +16,7 @@ import {
   EXTERNAL_SUFFIX,
   getHelpersModule,
   HELPERS_ID,
+  IS_WRAPPED_COMMONJS,
   isWrappedId,
   MODULE_SUFFIX,
   PROXY_SUFFIX,
@@ -115,16 +116,11 @@ export default function commonjs(options = {}) {
       return { meta: { commonjs: { isCommonJS: false } } };
     }
 
-    // TODO Lukas
-    // * test import from ESM -> additional proxy
-    // * test entry point
-    // * test interaction with dynamic require targets
-    // * test circular dependency: We must not use this.load without circularity check -> error in Rollup?
-    // When we write the imports, we already know that we are commonjs or mixed so we can rely on usesRequireWrapper and write that into a table
     const usesRequireWrapper =
       !isEsModule &&
       (dynamicRequireModuleSet.has(normalizePathSlashes(id)) || strictRequireSemanticFilter(id));
 
+    // TODO Lukas auto-detect circular dependencies
     // TODO Lukas extract helpers
     return transformCommonjs(
       this.parse,
@@ -181,8 +177,7 @@ export default function commonjs(options = {}) {
             return {
               source,
               id:
-                // TODO Lukas extract constant
-                isCommonJS === 'withRequireFunction'
+                isCommonJS === IS_WRAPPED_COMMONJS
                   ? resolved.id
                   : wrapId(resolved.id, PROXY_SUFFIX),
               isCommonJS
