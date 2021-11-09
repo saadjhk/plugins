@@ -227,9 +227,10 @@ export default async function transformCommonjs(
             let shouldRemoveRequireStatement = false;
 
             if (currentTryBlockEnd !== null) {
-              ({ canConvertRequire, shouldRemoveRequireStatement } =
-                getIgnoreTryCatchRequireStatementMode(node.arguments[0].value));
-
+              const ignoreTryCatchRequire = getIgnoreTryCatchRequireStatementMode(
+                node.arguments[0].value
+              );
+              ({ canConvertRequire, shouldRemoveRequireStatement } = ignoreTryCatchRequire);
               if (shouldRemoveRequireStatement) {
                 hasRemovedRequire = true;
               }
@@ -490,17 +491,15 @@ export default async function transformCommonjs(
   }
 
   if (usesRequireWrapper) {
-    magicString
-      .trim()
-      .indent('\t')
-      .prepend(
-        `var ${isRequiredName};
+    magicString.trim().indent('\t');
+    magicString.prepend(
+      `var ${isRequiredName};
 
 function ${requireName} () {
 \tif (${isRequiredName}) return ${exportsName};
 \t${isRequiredName} = 1;
 `
-      ).append(`
+    ).append(`
 \treturn ${exportsName};
 }`);
     if (exportMode === 'replace') {

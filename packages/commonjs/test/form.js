@@ -78,7 +78,11 @@ if (path.sep === '/') {
           const expected = fs.readFileSync(outputFile, 'utf-8').trim();
           // eslint-disable-next-line no-await-in-loop
           const transformed = await transform.call(transformContext, input, id);
-          const actual = (transformed ? transformed.code : input).trim().replace(/\0/g, '_');
+          let actual = (transformed ? transformed.code : input).trim().replace(/\0/g, '_');
+          const cwd = process.cwd();
+          while (actual.indexOf(cwd) >= 0) {
+            actual = actual.replace(process.cwd(), 'CWD');
+          }
 
           // uncomment to update snapshots
           // fs.writeFileSync(outputFile, `${actual}\n`);
