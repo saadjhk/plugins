@@ -9,5 +9,8 @@ module.exports = {
     output: {
       exports: 'named'
     }
+  },
+  pluginOptions: {
+    strictRequireSemantic: false
   }
 };

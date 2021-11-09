@@ -50,7 +50,7 @@ export default async function transformCommonjs(
   commonDir,
   astCache,
   defaultIsModuleExports,
-  usesRequireWrapper,
+  needsRequireWrapper,
   resolveRequireSourcesAndGetMeta
 ) {
   const ast = astCache || tryParse(parse, code, id);
@@ -447,7 +447,7 @@ export default async function transformCommonjs(
     ? 'exports'
     : 'module';
 
-  const importBlock = await rewriteRequireExpressionsAndGetImportBlock(
+  const { importBlock, usesRequireWrapper } = await rewriteRequireExpressionsAndGetImportBlock(
     magicString,
     topLevelDeclarations,
     topLevelRequireDeclarators,
@@ -459,7 +459,7 @@ export default async function transformCommonjs(
     id,
     exportMode,
     resolveRequireSourcesAndGetMeta,
-    usesRequireWrapper,
+    needsRequireWrapper,
     isEsModule,
     uses.require
   );

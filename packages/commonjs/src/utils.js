@@ -2,7 +2,7 @@
 
 import { basename, dirname, extname } from 'path';
 
-import { makeLegalIdentifier } from '@rollup/pluginutils';
+import { createFilter, makeLegalIdentifier } from '@rollup/pluginutils';
 
 export function deconflict(scopes, globals, identifier) {
   let i = 1;
@@ -44,4 +44,27 @@ export const getVirtualPathForDynamicRequirePath = (path, commonDir) => {
 
 export function capitalize(name) {
   return name[0].toUpperCase() + name.slice(1);
+}
+
+export function getStrictRequireSemanticFilter({ strictRequireSemantic }) {
+  switch (strictRequireSemantic) {
+    case true:
+      return { strictRequireSemanticFilter: () => true, detectCycles: false };
+    // eslint-disable-next-line no-undefined
+    case undefined:
+    case 'auto':
+    case 'debug':
+    case null:
+      return { strictRequireSemanticFilter: () => false, detectCycles: true };
+    case false:
+      return { strictRequireSemanticFilter: () => false, detectCycles: false };
+    default:
+      if (typeof strictRequireSemantic === 'string' || Array.isArray(strictRequireSemantic)) {
+        return {
+          strictRequireSemanticFilter: createFilter(strictRequireSemantic),
+          detectCycles: false
+        };
+      }
+      throw new Error('Unexpected value for "strictRequireSemantic" option.');
+  }
 }

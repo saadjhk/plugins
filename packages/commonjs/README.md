@@ -115,14 +115,20 @@ Instructs the plugin whether to enable mixed module transformations. This is use
 
 ### `strictRequireSemantic`
 
-Type: `boolean | string | string[]`<br>
-Default: `false`
+Type: `"auto" | boolean | "debug" | string[]`<br>
+Default: `"auto"`
 
-By default, this plugin will try to hoist all `require` statements as imports to the top of each file. While this works well for many code bases and allows for very efficient ESM output, it does not perfectly capture CommonJS semantics. This is especially problematic when there are circular `require` calls between CommonJS modules as those often rely on the lazy execution of nested `require` calls.
+By default, this plugin will try to hoist `require` statements as imports to the top of each file. While this works well for many code bases and allows for very efficient ESM output, it does not perfectly capture CommonJS semantics as the order of side effects like log statements may change. But it is especially problematic when there are circular `require` calls between CommonJS modules as those often rely on the lazy execution of nested `require` calls.
 
-Setting this option to `true` will wrap all CommonJS files in functions which are executed when they are required for the first time, preserving NodeJS semantics. Note that this can have a small impact on the size and performance of the generated code.
+Setting this option to `true` will wrap all CommonJS files in functions which are executed when they are required for the first time, preserving NodeJS semantics. Note that this can have an impact on the size and performance of the generated code.
+
+The default value of `"auto"` will only wrap CommonJS files when they are part of a CommonJS dependency cycle, e.g. an index file that is required by many of its dependencies. All other CommonJS files are hoisted. This is the recommended setting for most code bases.
+
+`false` will entirely prevent wrapping and hoist all files. This may still work depending on the nature of cyclic dependencies but will often cause problems.
 
 You can also provide a [minimatch pattern](https://github.com/isaacs/minimatch), or array of patterns, to only specify a subset of files which should be wrapped in functions for proper `require` semantics.
+
+`"debug"` works like `"auto"` but after bundling, it will display a warning containing a list of ids that have been wrapped which can be used as minimatch pattern for fine-tuning.
 
 ### `ignore`
 
