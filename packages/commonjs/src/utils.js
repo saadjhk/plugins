@@ -34,6 +34,7 @@ export function normalizePathSlashes(path) {
   return path.replace(/\\/g, '/');
 }
 
+// TODO Lukas get rid of this?
 const VIRTUAL_PATH_BASE = '/$$rollup_base$$';
 export const getVirtualPathForDynamicRequirePath = (path, commonDir) => {
   const normalizedPath = normalizePathSlashes(path);
