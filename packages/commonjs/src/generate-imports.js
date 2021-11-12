@@ -68,11 +68,11 @@ export function getRequireStringArg(node) {
     : node.arguments[0].quasis[0].value.cooked;
 }
 
-export function hasDynamicModuleForPath(source, id, dynamicRequireModuleSet) {
+export function hasDynamicModuleForPath(source, id, dynamicRequireModules) {
   if (!/^(?:\.{0,2}[/\\]|[A-Za-z]:[/\\])/.test(source)) {
     try {
       const resolvedPath = normalizePathSlashes(nodeResolveSync(source, { basedir: dirname(id) }));
-      if (dynamicRequireModuleSet.has(resolvedPath)) {
+      if (dynamicRequireModules.has(resolvedPath)) {
         return true;
       }
     } catch (ex) {
@@ -85,7 +85,7 @@ export function hasDynamicModuleForPath(source, id, dynamicRequireModuleSet) {
 
   for (const attemptExt of ['', '.js', '.json']) {
     const resolvedPath = normalizePathSlashes(resolve(dirname(id), source + attemptExt));
-    if (dynamicRequireModuleSet.has(resolvedPath)) {
+    if (dynamicRequireModules.has(resolvedPath)) {
       return true;
     }
   }

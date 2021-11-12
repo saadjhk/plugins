@@ -42,6 +42,8 @@ export default {
 
 Then call `rollup` either via the [CLI](https://www.rollupjs.org/guide/en/#command-line-reference) or the [API](https://www.rollupjs.org/guide/en/#javascript-api).
 
+When used together with the node-resolve plugin
+
 ## Options
 
 ### `strictRequires`
@@ -378,9 +380,11 @@ export default {
     format: 'iife',
     name: 'MyModule'
   },
-  plugins: [resolve(), commonjs()]
+  plugins: [commonjs(), resolve()]
 };
 ```
+
+Note that this plugin needs to be placed _before_ the node-resolve plugin. If that is not the case, it will automatically fix this by adjusting the plugins array and moving the node-resolve plugin directly behind the commonjs plugin during startup.
 
 ## Usage with symlinks
 
