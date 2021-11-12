@@ -146,6 +146,20 @@ export default function commonjs(options = {}) {
   return {
     name: 'commonjs',
 
+    options(options) {
+      // Always sort the node-resolve plugin after the commonjs plugin as otherwise CommonJS entries
+      // will not work with strictRequires: true
+      const { plugins } = options;
+      if (Array.isArray(plugins)) {
+        const cjsIndex = plugins.findIndex((plugin) => plugin.name === 'commonjs');
+        const nodeResolveIndex = plugins.findIndex((plugin) => plugin.name === 'node-resolve');
+        if (nodeResolveIndex >= 0 && nodeResolveIndex < cjsIndex) {
+          plugins.splice(cjsIndex + 1, 0, plugins[nodeResolveIndex]);
+          plugins.splice(nodeResolveIndex, 1);
+        }
+      }
+    },
+
     buildStart() {
       validateRollupVersion(this.meta.rollupVersion, peerDependencies.rollup);
       if (options.namedExports != null) {
