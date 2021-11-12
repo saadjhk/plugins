@@ -56,10 +56,11 @@ export default function commonjs(options = {}) {
   const defaultIsModuleExports =
     typeof options.defaultIsModuleExports === 'boolean' ? options.defaultIsModuleExports : 'auto';
 
-  const { resolveRequireSourcesAndGetMeta, getWrappedIds } = getResolveRequireSourcesAndGetMeta(
-    extensions,
-    detectCycles
-  );
+  const {
+    resolveRequireSourcesAndGetMeta,
+    getWrappedIds,
+    isRequiredId
+  } = getResolveRequireSourcesAndGetMeta(extensions, detectCycles);
   const dynamicRequireModuleSet = getDynamicRequireModuleSet(options.dynamicRequireTargets);
   const isDynamicRequireModulesEnabled = dynamicRequireModuleSet.size > 0;
   const commonDir = isDynamicRequireModulesEnabled
@@ -111,7 +112,8 @@ export default function commonjs(options = {}) {
 
     if (
       !dynamicRequireModuleSet.has(normalizePathSlashes(id)) &&
-      (!hasCjsKeywords(code, ignoreGlobal) || (isEsModule && !options.transformMixedEsModules))
+      (!(hasCjsKeywords(code, ignoreGlobal) || isRequiredId(id)) ||
+        (isEsModule && !options.transformMixedEsModules))
     ) {
       return { meta: { commonjs: { isCommonJS: false } } };
     }
@@ -136,7 +138,8 @@ export default function commonjs(options = {}) {
       ast,
       defaultIsModuleExports,
       needsRequireWrapper,
-      resolveRequireSourcesAndGetMeta(this)
+      resolveRequireSourcesAndGetMeta(this),
+      isRequiredId(id)
     );
   }
 
