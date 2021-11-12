@@ -47,25 +47,25 @@ export function capitalize(name) {
   return name[0].toUpperCase() + name.slice(1);
 }
 
-export function getStrictRequireSemanticFilter({ strictRequireSemantic }) {
-  switch (strictRequireSemantic) {
+export function getStrictRequiresFilter({ strictRequires }) {
+  switch (strictRequires) {
     case true:
-      return { strictRequireSemanticFilter: () => true, detectCycles: false };
+      return { strictRequiresFilter: () => true, detectCycles: false };
     // eslint-disable-next-line no-undefined
     case undefined:
     case 'auto':
     case 'debug':
     case null:
-      return { strictRequireSemanticFilter: () => false, detectCycles: true };
+      return { strictRequiresFilter: () => false, detectCycles: true };
     case false:
-      return { strictRequireSemanticFilter: () => false, detectCycles: false };
+      return { strictRequiresFilter: () => false, detectCycles: false };
     default:
-      if (typeof strictRequireSemantic === 'string' || Array.isArray(strictRequireSemantic)) {
+      if (typeof strictRequires === 'string' || Array.isArray(strictRequires)) {
         return {
-          strictRequireSemanticFilter: createFilter(strictRequireSemantic),
+          strictRequiresFilter: createFilter(strictRequires),
           detectCycles: false
         };
       }
-      throw new Error('Unexpected value for "strictRequireSemantic" option.');
+      throw new Error('Unexpected value for "strictRequires" option.');
   }
 }

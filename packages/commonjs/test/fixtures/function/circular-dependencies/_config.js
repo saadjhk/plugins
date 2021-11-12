@@ -11,6 +11,6 @@ module.exports = {
     }
   },
   pluginOptions: {
-    strictRequireSemantic: false
+    strictRequires: false
   }
 };

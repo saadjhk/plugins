@@ -27,7 +27,7 @@ import getResolveId from './resolve-id';
 import { getResolveRequireSourcesAndGetMeta } from './resolve-require-sources';
 import validateRollupVersion from './rollup-version';
 import transformCommonjs from './transform-commonjs';
-import { getName, getStrictRequireSemanticFilter, normalizePathSlashes } from './utils';
+import { getName, getStrictRequiresFilter, normalizePathSlashes } from './utils';
 
 export default function commonjs(options = {}) {
   const {
@@ -38,7 +38,7 @@ export default function commonjs(options = {}) {
   } = options;
   const extensions = options.extensions || ['.js'];
   const filter = createFilter(options.include, options.exclude);
-  const { strictRequireSemanticFilter, detectCycles } = getStrictRequireSemanticFilter(options);
+  const { strictRequiresFilter, detectCycles } = getStrictRequiresFilter(options);
 
   const getRequireReturnsDefault =
     typeof requireReturnsDefaultOption === 'function'
@@ -118,7 +118,7 @@ export default function commonjs(options = {}) {
 
     const needsRequireWrapper =
       !isEsModule &&
-      (dynamicRequireModuleSet.has(normalizePathSlashes(id)) || strictRequireSemanticFilter(id));
+      (dynamicRequireModuleSet.has(normalizePathSlashes(id)) || strictRequiresFilter(id));
 
     return transformCommonjs(
       this.parse,
@@ -153,7 +153,7 @@ export default function commonjs(options = {}) {
     },
 
     buildEnd() {
-      if (options.strictRequireSemantic === 'debug') {
+      if (options.strictRequires === 'debug') {
         const wrappedIds = getWrappedIds();
         if (wrappedIds.length) {
           this.warn({

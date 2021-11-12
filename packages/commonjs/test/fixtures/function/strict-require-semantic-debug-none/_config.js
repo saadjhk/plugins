@@ -5,7 +5,7 @@ const warnings = [];
 module.exports = {
   description: 'has correct debug output when there are no cycles',
   pluginOptions: {
-    strictRequireSemantic: 'debug'
+    strictRequires: 'debug'
   },
   options: {
     onwarn(warning) {

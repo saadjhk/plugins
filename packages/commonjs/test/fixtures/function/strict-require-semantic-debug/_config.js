@@ -7,7 +7,7 @@ module.exports = {
   description:
     'automatically detects cycles and switches those modules to strict semantics for "debug"',
   pluginOptions: {
-    strictRequireSemantic: 'debug'
+    strictRequires: 'debug'
   },
   options: {
     onwarn(warning) {
