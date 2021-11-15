@@ -89,6 +89,9 @@ export default function getResolveId(extensions) {
     const resolved =
       (await this.resolve(importee, importer, Object.assign({ skipSelf: true }, resolveOptions))) ||
       resolveExtensions(importee, importer, extensions);
+    if (!resolved || resolved.external) {
+      return resolved;
+    }
     let isCommonJsImporter = false;
     if (importer) {
       const moduleInfo = this.getModuleInfo(importer);
@@ -102,7 +105,7 @@ export default function getResolveId(extensions) {
         }
       }
     }
-    if (resolved && !isCommonJsImporter) {
+    if (!isCommonJsImporter) {
       const {
         meta: { commonjs: commonjsMeta }
       } = await this.load(resolved);
