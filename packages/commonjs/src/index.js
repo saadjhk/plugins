@@ -146,6 +146,7 @@ export default function commonjs(options = {}) {
   return {
     name: 'commonjs',
 
+    // TODO Lukas instead inject secondary plugin at beginning just for resolving
     options({ plugins }) {
       // Always sort the node-resolve plugin after the commonjs plugin as otherwise CommonJS entries
       // will not work with strictRequires: true

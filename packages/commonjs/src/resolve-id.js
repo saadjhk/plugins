@@ -77,6 +77,15 @@ export default function getResolveId(extensions) {
       return null;
     }
 
+    // If this is an entry point or ESM import, we need to figure out if it is wrapped and if that
+    // is the case, we need to add a proxy.
+    const customOptions = resolveOptions.custom;
+
+    // We are adding this option when resolving from CommonJS -> no ESM proxy needed
+    if (customOptions && customOptions['node-resolve'] && customOptions['node-resolve'].isRequire) {
+      return null;
+    }
+
     const resolved =
       (await this.resolve(importee, importer, Object.assign({ skipSelf: true }, resolveOptions))) ||
       resolveExtensions(importee, importer, extensions);
