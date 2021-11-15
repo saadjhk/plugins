@@ -24,7 +24,6 @@ export function getResolveRequireSourcesAndGetMeta(extensions, detectCycles) {
           }
           const resolved =
             (await rollupContext.resolve(source, id, {
-              skipSelf: true,
               custom: {
                 'node-resolve': { isRequire: true }
               }

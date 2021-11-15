@@ -146,18 +146,19 @@ export default function commonjs(options = {}) {
   return {
     name: 'commonjs',
 
-    // TODO Lukas instead inject secondary plugin at beginning just for resolving
-    options({ plugins }) {
-      // Always sort the node-resolve plugin after the commonjs plugin as otherwise CommonJS entries
-      // will not work with strictRequires: true
-      if (Array.isArray(plugins)) {
-        const cjsIndex = plugins.findIndex((plugin) => plugin.name === 'commonjs');
-        const nodeResolveIndex = plugins.findIndex((plugin) => plugin.name === 'node-resolve');
-        if (nodeResolveIndex >= 0 && nodeResolveIndex < cjsIndex) {
-          plugins.splice(cjsIndex + 1, 0, plugins[nodeResolveIndex]);
-          plugins.splice(nodeResolveIndex, 1);
-        }
-      }
+    options(rawOptions) {
+      // We inject the resolver in the beginning so that "catch-all-resolver" like node-resolver
+      // do not prevent our plugin from resolving entry points ot proxies.
+      const plugins = Array.isArray(rawOptions.plugins)
+        ? rawOptions.plugins
+        : rawOptions.plugins
+        ? [rawOptions.plugins]
+        : [];
+      plugins.unshift({
+        name: 'commonjs--resolver',
+        resolveId
+      });
+      return { ...rawOptions, plugins };
     },
 
     buildStart() {
@@ -181,7 +182,6 @@ export default function commonjs(options = {}) {
               .join(',\n')}\n]`
           });
         } else {
-          // TODO Lukas test
           this.warn({
             code: 'WRAPPED_IDS',
             ids: wrappedIds,
@@ -190,8 +190,6 @@ export default function commonjs(options = {}) {
         }
       }
     },
-
-    resolveId,
 
     load(id) {
       if (id === HELPERS_ID) {

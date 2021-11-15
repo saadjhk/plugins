@@ -384,8 +384,6 @@ export default {
 };
 ```
 
-Note that this plugin needs to be placed _before_ the node-resolve plugin. If that is not the case, it will automatically fix this by adjusting the plugins array and moving the node-resolve plugin directly behind the commonjs plugin during startup.
-
 ## Usage with symlinks
 
 Symlinks are common in monorepos and are also created by the `npm link` command. Rollup with `@rollup/plugin-node-resolve` resolves modules to their real paths by default. So `include` and `exclude` paths should handle real paths rather than symlinked paths (e.g. `../common/node_modules/**` instead of `node_modules/**`). You may also use a regular expression for `include` that works regardless of base path. Try this:
