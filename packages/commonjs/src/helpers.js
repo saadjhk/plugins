@@ -33,8 +33,14 @@ export function getDefaultExportFromNamespaceIfNotNamed (n) {
 }
 
 export function getAugmentedNamespace(n) {
-	if (n.__esModule) return n;
-	var a = Object.defineProperty({}, '__esModule', {value: true});
+  var f = n.default;
+	if (typeof f == "function") {
+		var a = function () {
+			return f.apply(this, arguments);
+		};
+		a.prototype = f.prototype;
+  } else a = {};
+  Object.defineProperty(a, '__esModule', {value: true});
 	Object.keys(n).forEach(function (k) {
 		var d = Object.getOwnPropertyDescriptor(n, k);
 		Object.defineProperty(a, k, d.get ? d : {
