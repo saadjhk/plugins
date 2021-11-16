@@ -1,4 +1,10 @@
-import { EXTERNAL_SUFFIX, IS_WRAPPED_COMMONJS, PROXY_SUFFIX, wrapId } from './helpers';
+import {
+  EXTERNAL_SUFFIX,
+  IS_WRAPPED_COMMONJS,
+  PROXY_SUFFIX,
+  wrapId,
+  WRAPPED_SUFFIX
+} from './helpers';
 import { resolveExtensions } from './resolve-id';
 
 export function getResolveRequireSourcesAndGetMeta(extensions, detectCycles) {
@@ -68,10 +74,11 @@ export function getResolveRequireSourcesAndGetMeta(extensions, detectCycles) {
           const isCommonJS = knownCjsModuleTypes[dependencyId];
           return {
             source: sources[index],
-            id:
-              allowProxy && isCommonJS !== IS_WRAPPED_COMMONJS
-                ? wrapId(dependencyId, PROXY_SUFFIX)
-                : dependencyId,
+            id: allowProxy
+              ? isCommonJS === IS_WRAPPED_COMMONJS
+                ? wrapId(dependencyId, WRAPPED_SUFFIX)
+                : wrapId(dependencyId, PROXY_SUFFIX)
+              : dependencyId,
             isCommonJS
           };
         }),

@@ -1,5 +1,5 @@
-export default function Foo() {
-  this.foo = 'foo';
+export default function Foo(...args) {
+  this.foo = args;
 }
 
 Foo.prototype.update = function () {

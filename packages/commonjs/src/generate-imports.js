@@ -119,6 +119,7 @@ export function getRequireHandlers() {
     const imports = [];
     imports.push(`import * as ${helpersName} from "${HELPERS_ID}";`);
     if (usesRequire) {
+      // TODO Lukas check where to import it from or change to usesDynamicRequire
       imports.push(
         `import { commonjsRequire as ${dynamicRequireName} } from "${DYNAMIC_MODULES_ID}";`
       );
